@@ -1,46 +1,81 @@
-import cv2
 import random
+
+from utils import (
+    rand_alpha,
+    rand_brightness,
+    rand_rotation,
+    rand_scale,
+)
 
 
 class Flower:
+    """
+    Lightweight flower object.
+
+    Rendering is handled by renderer.py
+    Animation is handled by effects.py
+    Placement is handled by flower_brush.py
+    """
+
     def __init__(self, image, position):
 
-        self.original = image
+        # Original PNG (RGBA)
+        self.image = image
 
-        self.x, self.y = position
+        # Position
+        self.x = float(position[0])
+        self.y = float(position[1])
 
-        self.scale = random.uniform(0.8, 1.2)
-        self.rotation = random.uniform(-30, 30)
-        self.alpha = random.uniform(0.85, 1.0)
+        # Random appearance
+        self.scale = rand_scale()
+        self.rotation = rand_rotation()
+        self.alpha = rand_alpha()
+        self.brightness = rand_brightness()
 
-        self.image = None
-        self.update()
+        # Animation state
+        self.glow = 0.0
+        self.blooming = False
+        self.dead = False
+
+        # Motion (used later for petals / wind)
+        self.vx = 0.0
+        self.vy = 0.0
+
+        # Lifetime
+        self.age = 0
+
+    def start_bloom(self):
+        """Trigger bloom animation."""
+        self.blooming = True
 
     def update(self):
 
-        h, w = self.original.shape[:2]
+        self.age += 1
 
-        img = cv2.resize(
-            self.original,
-            (
-                int(w * self.scale),
-                int(h * self.scale),
-            ),
-            interpolation=cv2.INTER_AREA,
-        )
+        if self.blooming:
 
-        h, w = img.shape[:2]
+            # Smooth growth
+            self.scale *= 1.012
 
-        matrix = cv2.getRotationMatrix2D(
-            (w // 2, h // 2),
-            self.rotation,
-            1,
-        )
+            # Gentle rotation
+            self.rotation += 0.6
 
-        self.image = cv2.warpAffine(
-            img,
-            matrix,
-            (w, h),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_TRANSPARENT,
-        )
+            # Glow intensity
+            self.glow = min(1.0, self.glow + 0.04)
+
+            # Fade away
+            self.alpha -= 0.010
+
+            if self.alpha <= 0:
+
+                self.alpha = 0
+                self.dead = True
+
+        else:
+
+            # Keep glow fading naturally
+            self.glow *= 0.96
+
+    @property
+    def position(self):
+        return (self.x, self.y)

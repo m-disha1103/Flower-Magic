@@ -1,58 +1,68 @@
-import cv2
-import math
-
-from flower import Flower
-from config import MIN_FLOWER_DISTANCE
+from utils import distance, interpolate_points
 
 
 class FlowerBrush:
-    def __init__(self, flower_path):
-        self.template = cv2.imread(
-            flower_path,
-            cv2.IMREAD_UNCHANGED,
-        )
+    """
+    Responsible only for converting fingertip movement
+    into flower placement requests.
+    """
 
-        if self.template is None:
-            raise FileNotFoundError(flower_path)
+    def __init__(self, manager):
 
-        self.flowers = []
+        self.manager = manager
 
-        self.last = {
+        self.spacing = 18
+
+        self.last_points = {
             "Left": None,
             "Right": None,
         }
 
     def update(self, hands):
 
+        active = set()
+
         for hand in hands:
 
             label = hand["label"]
             point = hand["index_tip"]
 
-            last = self.last[label]
+            active.add(label)
 
+            last = self.last_points[label]
+
+            # First flower
             if last is None:
-                self.flowers.append(
-                    Flower(self.template, point)
-                )
-                self.last[label] = point
+
+                self.manager.add(point)
+                self.last_points[label] = point
                 continue
 
-            dist = math.hypot(
-                point[0] - last[0],
-                point[1] - last[1],
+            # Ignore tiny movements
+            if distance(last, point) < self.spacing:
+                continue
+
+            # Fill gaps when moving fast
+            points = interpolate_points(
+                last,
+                point,
+                self.spacing,
             )
 
-            if dist >= MIN_FLOWER_DISTANCE:
-                self.flowers.append(
-                    Flower(self.template, point)
-                )
-                self.last[label] = point
+            for p in points:
+                self.manager.add(p)
+
+            self.last_points[label] = point
+
+        # Reset hands that disappeared
+        for label in self.last_points:
+
+            if label not in active:
+                self.last_points[label] = None
 
     def clear(self):
-        self.flowers.clear()
 
-        self.last = {
-            "Left": None,
-            "Right": None,
-        }
+        self.manager.clear()
+
+        for hand in self.last_points:
+            self.last_points[hand] = None
