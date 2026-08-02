@@ -1,9 +1,11 @@
 from pathlib import Path
+
 from flower import Flower
 from utils import load_folder, random_image
 
 
 class FlowerManager:
+
     def __init__(self):
 
         self.images = load_folder(
@@ -12,7 +14,14 @@ class FlowerManager:
 
         self.flowers = []
 
+        self.max_flowers = 3000
+
+    # -------------------------------------
+
     def add(self, position):
+
+        if len(self.flowers) >= self.max_flowers:
+            self.flowers.pop(0)
 
         flower = Flower(
             random_image(self.images),
@@ -21,15 +30,7 @@ class FlowerManager:
 
         self.flowers.append(flower)
 
-    def draw(self, renderer, frame):
-
-        for flower in self.flowers:
-            renderer.draw_flower(frame, flower)
-
-    def bloom(self):
-
-        for flower in self.flowers:
-            flower.bloom()
+    # -------------------------------------
 
     def update(self):
 
@@ -39,11 +40,26 @@ class FlowerManager:
 
             flower.update()
 
-            if flower.alpha > 0.02:
+            if not flower.dead:
                 alive.append(flower)
 
         self.flowers = alive
 
+    # -------------------------------------
+
+    def bloom(self):
+
+        for flower in self.flowers:
+            flower.start_bloom()
+
+    # -------------------------------------
+
     def clear(self):
 
         self.flowers.clear()
+
+    # -------------------------------------
+
+    def __len__(self):
+
+        return len(self.flowers)

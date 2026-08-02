@@ -2,14 +2,14 @@ import cv2
 
 from camera import Camera
 from hand_tracker import HandTracker
-from flower_brush import FlowerBrush
-from renderer import Renderer
 from gesture import Gesture
-from effects import BloomEffect
-from particles import ParticleSystem
 
+from flower_brush import FlowerBrush
+from managers.flower_manager import FlowerManager
 
-FLOWER_IMAGE = "assets/flowers/flower.png"
+from renderer import Renderer
+from particles import ParticleEngine
+from effects import BloomEffect, WindEffect
 
 
 def main():
@@ -17,9 +17,17 @@ def main():
     camera = Camera()
     tracker = HandTracker()
 
-    brush = FlowerBrush(FLOWER_IMAGE)
+    manager = FlowerManager()
+    brush = FlowerBrush(manager)
+
+    renderer = Renderer()
+
+    particles = ParticleEngine()
+
     bloom = BloomEffect()
-    particles = ParticleSystem()
+    wind = WindEffect()
+
+    bloom_triggered = False
 
     while True:
 
@@ -33,49 +41,63 @@ def main():
         # Draw flowers
         brush.update(hands)
 
-        # Bloom gesture
-        for hand in hands:
+        # -------- Bloom Gesture --------
 
-            if Gesture.is_open_palm(hand):
-
-                bloom.trigger()
-
-                for flower in brush.flowers:
-                    particles.emit(
-                        flower.x,
-                        flower.y,
-                        6,
-                    )
-
-        # Animate bloom
-        bloom.update(brush.flowers)
-
-        # Update particles
-        particles.update()
-
-        # Render flowers
-        frame = Renderer.draw(
-            frame,
-            brush.flowers,
+        open_palm = any(
+            Gesture.is_open_palm(hand)
+            for hand in hands
         )
 
-        # Draw particles
-        for p in particles.particles:
+        if open_palm and not bloom_triggered:
 
-            if p.life <= 0:
-                continue
+            bloom.trigger(manager.flowers)
 
-            cv2.circle(
-                frame,
-                (int(p.x), int(p.y)),
-                2,
-                (210, 210, 255),
-                -1,
-            )
+            for flower in manager.flowers:
+
+                particles.emit_petals(
+                    flower.position,
+                    count=6,
+                )
+
+                particles.emit_sparkles(
+                    flower.position,
+                    count=4,
+                )
+
+            bloom_triggered = True
+
+        elif not open_palm:
+
+            bloom_triggered = False
+
+        # -------- Update --------
+
+        bloom.update(manager.flowers)
+
+        wind.update(manager.flowers)
+
+        manager.update()
+
+        particles.update()
+
+        # Remove dead flowers
+        manager.flowers = [
+            flower
+            for flower in manager.flowers
+            if not flower.dead
+        ]
+
+        # -------- Render --------
+
+        frame = renderer.draw(
+            frame,
+            manager,
+            particles,
+        )
 
         cv2.putText(
             frame,
-            f"Flowers : {len(brush.flowers)}",
+            f"Flowers : {len(manager.flowers)}",
             (20, 35),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
@@ -83,18 +105,26 @@ def main():
             2,
         )
 
-        cv2.imshow("Flower Magic", frame)
+        cv2.imshow(
+            "Flower Magic",
+            frame,
+        )
 
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord("c"):
-            brush.clear()
 
-        elif key == 27 or key == ord("q"):
+            brush.clear()
+            particles.clear()
+
+        elif key == ord("q") or key == 27:
+
             break
 
     tracker.close()
     camera.release()
+
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

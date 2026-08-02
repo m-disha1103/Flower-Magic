@@ -7,17 +7,46 @@ class Renderer:
     def __init__(self):
         pass
 
+    # -------------------------------------------------
+
+    def _overlay(self, frame, image, x, y, alpha):
+
+        h, w = image.shape[:2]
+
+        if (
+            x < 0
+            or y < 0
+            or x + w > frame.shape[1]
+            or y + h > frame.shape[0]
+        ):
+            return
+
+        roi = frame[y:y+h, x:x+w]
+
+        mask = (image[:, :, 3].astype(np.float32) / 255.0) * alpha
+
+        for c in range(3):
+
+            roi[:, :, c] = (
+                mask * image[:, :, c]
+                + (1 - mask) * roi[:, :, c]
+            )
+
+        frame[y:y+h, x:x+w] = roi
+
+    # -------------------------------------------------
+
     def draw_flower(self, frame, flower):
 
         img = flower.image.copy()
 
-        # ---------- Brightness ----------
+        # Brightness
         img = img.astype(np.float32)
         img[:, :, :3] *= flower.brightness
         img[:, :, :3] = np.clip(img[:, :, :3], 0, 255)
         img = img.astype(np.uint8)
 
-        # ---------- Scale ----------
+        # Scale
         h, w = img.shape[:2]
 
         nw = max(8, int(w * flower.scale))
@@ -29,7 +58,7 @@ class Renderer:
             interpolation=cv2.INTER_AREA,
         )
 
-        # ---------- Rotation ----------
+        # Rotate
         h, w = img.shape[:2]
 
         matrix = cv2.getRotationMatrix2D(
@@ -46,61 +75,75 @@ class Renderer:
             borderMode=cv2.BORDER_TRANSPARENT,
         )
 
-        if img.shape[2] != 4:
-            return
+        self._overlay(
+            frame,
+            img,
+            int(flower.x - w / 2),
+            int(flower.y - h / 2),
+            flower.alpha,
+        )
 
-        x = int(flower.x - w / 2)
-        y = int(flower.y - h / 2)
+    # -------------------------------------------------
 
-        if (
-            x < 0
-            or y < 0
-            or x + w > frame.shape[1]
-            or y + h > frame.shape[0]
-        ):
-            return
+    def draw_particle(self, frame, particle):
 
-        roi = frame[y:y + h, x:x + w]
+        img = particle.image
 
-        alpha = (
-            img[:, :, 3].astype(np.float32) / 255.0
-        ) * flower.alpha
+        h, w = img.shape[:2]
 
-        for c in range(3):
-            roi[:, :, c] = (
-                alpha * img[:, :, c]
-                + (1 - alpha) * roi[:, :, c]
-            )
+        nw = max(4, int(w * particle.scale))
+        nh = max(4, int(h * particle.scale))
 
-        frame[y:y + h, x:x + w] = roi
+        img = cv2.resize(
+            img,
+            (nw, nh),
+            interpolation=cv2.INTER_AREA,
+        )
 
-        # ---------- Glow ----------
-        if flower.glow > 0:
+        h, w = img.shape[:2]
 
-            radius = int(max(w, h) * 0.7)
+        matrix = cv2.getRotationMatrix2D(
+            (w / 2, h / 2),
+            particle.rotation,
+            1,
+        )
 
-            glow = np.zeros_like(frame)
+        img = cv2.warpAffine(
+            img,
+            matrix,
+            (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_TRANSPARENT,
+        )
 
-            cv2.circle(
-                glow,
-                (int(flower.x), int(flower.y)),
-                radius,
-                (220, 240, 255),
-                -1,
-                cv2.LINE_AA,
-            )
+        self._overlay(
+            frame,
+            img,
+            int(particle.x - w / 2),
+            int(particle.y - h / 2),
+            particle.alpha,
+        )
 
-            frame[:] = cv2.addWeighted(
-                frame,
-                1.0,
-                glow,
-                flower.glow * 0.18,
-                0,
-            )
+    # -------------------------------------------------
 
-    def draw(self, frame, manager):
+    def draw(
+        self,
+        frame,
+        manager,
+        particles=None,
+    ):
 
+        # Flowers
         for flower in manager.flowers:
             self.draw_flower(frame, flower)
+
+        # Particles
+        if particles:
+
+            for particle in particles.particles:
+                self.draw_particle(
+                    frame,
+                    particle,
+                )
 
         return frame

@@ -1,44 +1,113 @@
 import random
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from utils import load_folder, random_image
 
 
 class Particle:
+    def __init__(self, image, position):
 
-    def __init__(self, x, y):
+        self.image = image
 
-        self.x = x
-        self.y = y
+        self.x = float(position[0])
+        self.y = float(position[1])
 
-        self.dx = random.uniform(-2, 2)
-        self.dy = random.uniform(-4, -1)
+        self.vx = random.uniform(-2.0, 2.0)
+        self.vy = random.uniform(-5.0, -2.5)
 
-        self.life = 60
+        self.scale = random.uniform(0.25, 0.7)
+
+        self.rotation = random.uniform(0, 360)
+        self.rotation_speed = random.uniform(-8, 8)
+
+        self.alpha = 1.0
+
+        self.gravity = 0.15
+
+        self.life = 80
+
+        self.dead = False
 
     def update(self):
 
-        self.x += self.dx
-        self.y += self.dy
+        self.x += self.vx
+        self.y += self.vy
 
-        self.dy += 0.03
+        self.vy += self.gravity
+
+        self.rotation += self.rotation_speed
+
+        self.alpha *= 0.985
+
         self.life -= 1
 
+        if self.life <= 0 or self.alpha < 0.03:
+            self.dead = True
 
-class ParticleSystem:
+
+class ParticleEngine:
 
     def __init__(self):
+
+        self.petal_images = load_folder(
+            Path("assets/petals")
+        )
+
+        self.sparkle_images = load_folder(
+            Path("assets/sparkle")
+        )
+
         self.particles = []
 
-    def emit(self, x, y, count=10):
+    # --------------------------
+
+    def emit_petals(self, position, count=12):
 
         for _ in range(count):
+
             self.particles.append(
-                Particle(x, y)
+                Particle(
+                    random_image(self.petal_images),
+                    position,
+                )
             )
+
+    # --------------------------
+
+    def emit_sparkles(self, position, count=8):
+
+        for _ in range(count):
+
+            p = Particle(
+                random_image(self.sparkle_images),
+                position,
+            )
+
+            p.scale *= 0.6
+            p.life = 40
+
+            self.particles.append(p)
+
+    # --------------------------
 
     def update(self):
 
-        for p in self.particles[:]:
+        alive = []
 
-            p.update()
+        for particle in self.particles:
 
-            if p.life <= 0:
-                self.particles.remove(p)
+            particle.update()
+
+            if not particle.dead:
+                alive.append(particle)
+
+        self.particles = alive
+
+    # --------------------------
+
+    def clear(self):
+
+        self.particles.clear()
