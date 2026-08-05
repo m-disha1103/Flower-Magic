@@ -5,11 +5,8 @@ from hand_tracker import HandTracker
 from gesture import Gesture
 
 from flower_brush import FlowerBrush
-from managers.flower_manager import FlowerManager
-
 from renderer import Renderer
 from particles import ParticleEngine
-from effects import BloomEffect, WindEffect
 
 
 def main():
@@ -17,15 +14,13 @@ def main():
     camera = Camera()
     tracker = HandTracker()
 
-    manager = FlowerManager()
-    brush = FlowerBrush(manager)
+    flowers = []
+
+    brush = FlowerBrush(flowers)
 
     renderer = Renderer()
 
     particles = ParticleEngine()
-
-    bloom = BloomEffect()
-    wind = WindEffect()
 
     bloom_triggered = False
 
@@ -41,8 +36,7 @@ def main():
         # Draw flowers
         brush.update(hands)
 
-        # -------- Bloom Gesture --------
-
+        # Bloom Gesture
         open_palm = any(
             Gesture.is_open_palm(hand)
             for hand in hands
@@ -50,9 +44,9 @@ def main():
 
         if open_palm and not bloom_triggered:
 
-            bloom.trigger(manager.flowers)
+            for flower in flowers:
 
-            for flower in manager.flowers:
+                flower.start_bloom()
 
                 particles.emit_petals(
                     flower.position,
@@ -70,34 +64,32 @@ def main():
 
             bloom_triggered = False
 
-        # -------- Update --------
+        # Update flowers
+        alive = []
 
-        bloom.update(manager.flowers)
+        for flower in flowers:
 
-        wind.update(manager.flowers)
+            flower.update()
 
-        manager.update()
+            if not flower.dead:
+                alive.append(flower)
+
+        # IMPORTANT:
+        # Keep the same list object so FlowerBrush, Renderer,
+        # and the bloom system all reference the same list.
+        flowers[:] = alive
 
         particles.update()
 
-        # Remove dead flowers
-        manager.flowers = [
-            flower
-            for flower in manager.flowers
-            if not flower.dead
-        ]
-
-        # -------- Render --------
-
         frame = renderer.draw(
             frame,
-            manager,
+            flowers,
             particles,
         )
 
         cv2.putText(
             frame,
-            f"Flowers : {len(manager.flowers)}",
+            f"Flowers : {len(flowers)}",
             (20, 35),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
@@ -114,8 +106,9 @@ def main():
 
         if key == ord("c"):
 
-            brush.clear()
+            flowers.clear()
             particles.clear()
+            brush.clear()
 
         elif key == ord("q") or key == 27:
 

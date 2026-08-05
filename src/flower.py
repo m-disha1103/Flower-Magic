@@ -1,4 +1,11 @@
 import random
+import math
+
+from config import (
+    BLOOM_SCALE_SPEED,
+    BLOOM_ROTATION_SPEED,
+    BLOOM_FADE_SPEED,
+)
 
 from utils import (
     rand_alpha,
@@ -10,72 +17,112 @@ from utils import (
 
 class Flower:
     """
-    Lightweight flower object.
-
-    Rendering is handled by renderer.py
-    Animation is handled by effects.py
-    Placement is handled by flower_brush.py
+    Animated flower object.
+    Rendering is handled by renderer.py.
     """
 
     def __init__(self, image, position):
 
-        # Original PNG (RGBA)
         self.image = image
 
-        # Position
         self.x = float(position[0])
         self.y = float(position[1])
 
-        # Random appearance
-        self.scale = rand_scale()
+        # ---------------- Appearance ----------------
+
+        self.target_scale = rand_scale()
+
+        # Start tiny for bloom animation
+        self.scale = self.target_scale * 0.15
+
         self.rotation = rand_rotation()
+
         self.alpha = rand_alpha()
+
         self.brightness = rand_brightness()
 
-        # Animation state
-        self.glow = 0.0
-        self.blooming = False
-        self.dead = False
+        self.glow = 1.0
 
-        # Motion (used later for petals / wind)
-        self.vx = 0.0
-        self.vy = 0.0
+        # ---------------- Animation ----------------
 
-        # Lifetime
         self.age = 0
 
-    def start_bloom(self):
-        """Trigger bloom animation."""
+        self.dead = False
+
         self.blooming = True
+
+        self.bloom_progress = 0.0
+
+        # ---------------- Floating Motion ----------------
+
+        self.float_offset = random.uniform(0, math.pi * 2)
+
+        self.float_speed = random.uniform(0.015, 0.035)
+
+        self.float_strength = random.uniform(0.15, 0.5)
+
+        self.vx = random.uniform(-0.05, 0.05)
+
+        self.vy = random.uniform(-0.05, 0.05)
+
+    # -----------------------------------------------------
+
+    @property
+    def position(self):
+        return (self.x, self.y)
+
+    # -----------------------------------------------------
+
+    def start_bloom(self):
+        self.blooming = True
+
+    # -----------------------------------------------------
 
     def update(self):
 
         self.age += 1
 
+        # Gentle floating
+        self.float_offset += self.float_speed
+
+        self.x += self.vx
+        self.y += self.vy + math.sin(self.float_offset) * self.float_strength
+
+        # ---------------- Spawn Bloom ----------------
+
         if self.blooming:
 
-            # Smooth growth
-            self.scale *= 1.012
+            self.bloom_progress = min(
+                1.0,
+                self.bloom_progress + 0.08,
+            )
 
-            # Gentle rotation
-            self.rotation += 0.6
+            ease = (
+                1.0
+                - (1.0 - self.bloom_progress)
+                * (1.0 - self.bloom_progress)
+            )
 
-            # Glow intensity
-            self.glow = min(1.0, self.glow + 0.04)
-
-            # Fade away
-            self.alpha -= 0.010
-
-            if self.alpha <= 0:
-
-                self.alpha = 0
-                self.dead = True
-
+            self.scale = (
+                self.target_scale * ease
+            )
+            self.rotation += BLOOM_ROTATION_SPEED
+            self.glow = max(
+                0.0,
+                self.glow - 0.03,
+            )
+            if self.bloom_progress >= 1.0:
+                self.blooming = False
+        # ---------------- Explosion Bloom ----------------
         else:
-
-            # Keep glow fading naturally
-            self.glow *= 0.96
-
-    @property
-    def position(self):
-        return (self.x, self.y)
+            self.scale = (
+                self.scale * 0.999
+                + self.target_scale * 0.001
+            )
+        # If flower alpha is already reduced externally,
+        # fade naturally until removed.
+        if self.alpha < 1.0:
+            self.alpha -= BLOOM_FADE_SPEED
+            if self.alpha <= 0.0:
+                self.alpha = 0.0
+                self.dead = True

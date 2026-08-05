@@ -3,54 +3,114 @@ import numpy as np
 
 
 class Renderer:
+    """
+    Renders flowers and particles.
+    """
 
-    def __init__(self):
-        pass
+    # --------------------------------------------------
 
-    # -------------------------------------------------
+    @staticmethod
+    def overlay(frame, image, x, y, alpha=1.0):
 
-    def _overlay(self, frame, image, x, y, alpha):
+        if image is None:
+            return
+
+        if len(image.shape) != 3:
+            return
+
+        if image.shape[2] != 4:
+            return
+
+        h, w = image.shape[:2]
+        fh, fw = frame.shape[:2]
+
+        x1 = max(0, x)
+        y1 = max(0, y)
+
+        x2 = min(fw, x + w)
+        y2 = min(fh, y + h)
+
+        if x1 >= x2 or y1 >= y2:
+            return
+
+        sx1 = x1 - x
+        sy1 = y1 - y
+        sx2 = sx1 + (x2 - x1)
+        sy2 = sy1 + (y2 - y1)
+
+        overlay = image[sy1:sy2, sx1:sx2]
+
+        alpha_mask = (
+            overlay[:, :, 3].astype(np.float32) / 255.0
+        ) * alpha
+
+        alpha_mask = alpha_mask[..., None]
+
+        roi = frame[y1:y2, x1:x2].astype(np.float32)
+
+        rgb = overlay[:, :, :3].astype(np.float32)
+
+        blended = rgb * alpha_mask + roi * (1.0 - alpha_mask)
+
+        frame[y1:y2, x1:x2] = blended.astype(np.uint8)
+
+    # --------------------------------------------------
+
+    @staticmethod
+    def rotate_rgba(image, angle):
 
         h, w = image.shape[:2]
 
-        if (
-            x < 0
-            or y < 0
-            or x + w > frame.shape[1]
-            or y + h > frame.shape[0]
-        ):
-            return
+        matrix = cv2.getRotationMatrix2D(
+            (w / 2, h / 2),
+            angle,
+            1.0,
+        )
 
-        roi = frame[y:y+h, x:x+w]
+        channels = cv2.split(image)
 
-        mask = (image[:, :, 3].astype(np.float32) / 255.0) * alpha
+        rotated = []
 
-        for c in range(3):
+        for channel in channels:
 
-            roi[:, :, c] = (
-                mask * image[:, :, c]
-                + (1 - mask) * roi[:, :, c]
+            rotated.append(
+                cv2.warpAffine(
+                    channel,
+                    matrix,
+                    (w, h),
+                    flags=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_CONSTANT,
+                    borderValue=0,
+                )
             )
 
-        frame[y:y+h, x:x+w] = roi
+        return cv2.merge(rotated)
 
-    # -------------------------------------------------
+    # --------------------------------------------------
 
     def draw_flower(self, frame, flower):
 
-        img = flower.image.copy()
+        if flower.image is None:
+            return
 
-        # Brightness
-        img = img.astype(np.float32)
+        img = flower.image.copy().astype(np.float32)
+
         img[:, :, :3] *= flower.brightness
-        img[:, :, :3] = np.clip(img[:, :, :3], 0, 255)
+
+        img[:, :, :3] = np.clip(
+            img[:, :, :3],
+            0,
+            255,
+        )
+
         img = img.astype(np.uint8)
 
-        # Scale
         h, w = img.shape[:2]
 
-        nw = max(8, int(w * flower.scale))
-        nh = max(8, int(h * flower.scale))
+        scale = max(0.15, flower.scale * 0.18)
+
+        nw = max(24, int(w * scale))
+        nh = max(24, int(h * scale))
 
         img = cv2.resize(
             img,
@@ -58,24 +118,14 @@ class Renderer:
             interpolation=cv2.INTER_AREA,
         )
 
-        # Rotate
+        img = self.rotate_rgba(
+            img,
+            flower.rotation,
+        )
+
         h, w = img.shape[:2]
 
-        matrix = cv2.getRotationMatrix2D(
-            (w / 2, h / 2),
-            flower.rotation,
-            1,
-        )
-
-        img = cv2.warpAffine(
-            img,
-            matrix,
-            (w, h),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_TRANSPARENT,
-        )
-
-        self._overlay(
+        self.overlay(
             frame,
             img,
             int(flower.x - w / 2),
@@ -83,16 +133,19 @@ class Renderer:
             flower.alpha,
         )
 
-    # -------------------------------------------------
+    # --------------------------------------------------
 
     def draw_particle(self, frame, particle):
 
-        img = particle.image
+        if particle.image is None:
+            return
+
+        img = particle.image.copy()
 
         h, w = img.shape[:2]
 
-        nw = max(4, int(w * particle.scale))
-        nh = max(4, int(h * particle.scale))
+        nw = max(6, int(w * particle.scale))
+        nh = max(6, int(h * particle.scale))
 
         img = cv2.resize(
             img,
@@ -100,23 +153,14 @@ class Renderer:
             interpolation=cv2.INTER_AREA,
         )
 
+        img = self.rotate_rgba(
+            img,
+            particle.rotation,
+        )
+
         h, w = img.shape[:2]
 
-        matrix = cv2.getRotationMatrix2D(
-            (w / 2, h / 2),
-            particle.rotation,
-            1,
-        )
-
-        img = cv2.warpAffine(
-            img,
-            matrix,
-            (w, h),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_TRANSPARENT,
-        )
-
-        self._overlay(
+        self.overlay(
             frame,
             img,
             int(particle.x - w / 2),
@@ -124,21 +168,14 @@ class Renderer:
             particle.alpha,
         )
 
-    # -------------------------------------------------
+    # --------------------------------------------------
 
-    def draw(
-        self,
-        frame,
-        manager,
-        particles=None,
-    ):
+    def draw(self, frame, flowers, particles=None):
 
-        # Flowers
-        for flower in manager.flowers:
+        for flower in flowers:
             self.draw_flower(frame, flower)
 
-        # Particles
-        if particles:
+        if particles is not None:
 
             for particle in particles.particles:
                 self.draw_particle(

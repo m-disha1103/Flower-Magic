@@ -3,150 +3,129 @@ import random
 from pathlib import Path
 
 import cv2
-import numpy as np
 
 
-# ---------- Math ----------
+# ---------------------------------------------------
+# Random values
+# ---------------------------------------------------
 
-def distance(p1, p2):
+def rand_scale():
+    return random.uniform(0.55, 1.15)
+
+
+def rand_rotation():
+    return random.uniform(0, 360)
+
+
+def rand_alpha():
+    return random.uniform(0.85, 1.0)
+
+
+def rand_brightness():
+    return random.uniform(0.85, 1.15)
+
+
+# ---------------------------------------------------
+# Math
+# ---------------------------------------------------
+
+def distance(a, b):
     return math.hypot(
-        p2[0] - p1[0],
-        p2[1] - p1[1],
-    )
-
-
-def lerp(a, b, t):
-    return a + (b - a) * t
-
-
-def lerp_point(p1, p2, t):
-    return (
-        lerp(p1[0], p2[0], t),
-        lerp(p1[1], p2[1], t),
+        a[0] - b[0],
+        a[1] - b[1],
     )
 
 
 def interpolate_points(start, end, spacing):
+    dist = distance(start, end)
 
-    d = distance(start, end)
+    if dist < spacing:
+        return [end]
 
-    if d < spacing:
-        return []
-
-    count = int(d // spacing)
+    steps = max(1, int(dist / spacing))
 
     points = []
 
-    for i in range(1, count + 1):
+    for i in range(1, steps + 1):
+        t = i / steps
 
-        t = (i * spacing) / d
+        x = start[0] + (end[0] - start[0]) * t
+        y = start[1] + (end[1] - start[1]) * t
 
-        points.append(
-            lerp_point(start, end, t)
-        )
+        points.append((int(x), int(y)))
 
     return points
 
 
-# ---------- Image ----------
+# ---------------------------------------------------
+# Project Paths
+# ---------------------------------------------------
 
-_image_cache = {}
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ASSETS_DIR = PROJECT_ROOT / "assets"
+FLOWERS_DIR = ASSETS_DIR / "flowers"
 
 
-def load_png(path):
-
-    path = str(path)
-
-    if path not in _image_cache:
-
-        img = cv2.imread(
-            path,
-            cv2.IMREAD_UNCHANGED,
-        )
-
-        if img is None:
-            raise FileNotFoundError(path)
-
-        if img.shape[-1] != 4:
-            raise ValueError(
-                f"{path} must contain alpha channel."
-            )
-
-        _image_cache[path] = img
-
-    return _image_cache[path].copy()
-
+# ---------------------------------------------------
+# Image Loading
+# ---------------------------------------------------
 
 def load_folder(folder):
-
     folder = Path(folder)
 
     images = []
 
-    for file in sorted(folder.glob("*.png")):
+    if not folder.exists():
+        print(f"[FlowerMagic] Folder not found: {folder}")
+        return images
 
-        images.append(
-            load_png(file)
+    for file in sorted(folder.iterdir()):
+
+        if file.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+            continue
+
+        image = cv2.imread(
+            str(file),
+            cv2.IMREAD_UNCHANGED,
         )
 
-    if not images:
-        raise RuntimeError(
-            f"No PNGs found in {folder}"
-        )
+        if image is None:
+            print(f"[FlowerMagic] Failed to load: {file.name}")
+            continue
+
+        if len(image.shape) == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGRA)
+
+        elif image.shape[2] == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+
+        images.append(image)
+
+    print(f"[FlowerMagic] Loaded {len(images)} flower images.")
 
     return images
 
 
+# ---------------------------------------------------
+# Flower Assets
+# ---------------------------------------------------
+
+FLOWER_IMAGES = load_folder(FLOWERS_DIR)
+
+
+def random_flower_image():
+    if not FLOWER_IMAGES:
+        return None
+
+    return random.choice(FLOWER_IMAGES)
+
+
+# ---------------------------------------------------
+# Generic Helper
+# ---------------------------------------------------
+
 def random_image(images):
-    return random.choice(images).copy()
+    if not images:
+        return None
 
-
-# ---------- Color ----------
-
-def adjust_brightness(image, factor):
-
-    img = image.astype(np.float32)
-
-    img[:, :, :3] *= factor
-
-    img[:, :, :3] = np.clip(
-        img[:, :, :3],
-        0,
-        255,
-    )
-
-    return img.astype(np.uint8)
-
-
-# ---------- Random ----------
-
-def rand_scale():
-
-    return random.uniform(
-        0.75,
-        1.25,
-    )
-
-
-def rand_rotation():
-
-    return random.uniform(
-        -25,
-        25,
-    )
-
-
-def rand_alpha():
-
-    return random.uniform(
-        0.85,
-        1.0,
-    )
-
-
-def rand_brightness():
-
-    return random.uniform(
-        0.85,
-        1.15,
-    )
+    return random.choice(images)
